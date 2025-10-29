@@ -1,92 +1,59 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Share Location (consensual)</title>
-<style>
-  body{font-family:system-ui;padding:20px;max-width:720px;margin:auto}
-  button{padding:10px 14px;border-radius:8px;background:#0b63ff;color:#fff;border:0;cursor:pointer}
-  .muted{color:#555}
-  .box{background:#f8fafc;padding:12px;border-radius:8px;margin-top:12px}
-  pre{background:#efefef;padding:12px;border-radius:8px;overflow:auto}
-  .hint{background:#fff4e5;padding:10px;border-radius:6px;margin-top:8px}
-</style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Share Location (consensual) — fixed</title>
+  <style>
+    body{font-family:system-ui;padding:20px;max-width:800px;margin:auto}
+    button{padding:10px 14px;border-radius:8px;background:#0b63ff;color:#fff;border:0;cursor:pointer}
+    pre{background:#f3f4f6;padding:12px;border-radius:8px;white-space:pre-wrap}
+    .muted{color:#555}
+  </style>
 </head>
 <body>
-  <h2>Share your location</h2>
-  <p class="muted">Click the button and Allow location when browser asks. If permission is denied, follow the instructions shown below.</p>
+  <h2>Share your location (consensual)</h2>
+  <p class="muted">Click the button and Allow location when the browser asks. (You must allow — cannot be bypassed.)</p>
 
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button id="shareBtn">Share my location</button>
-    <button id="manualBtn" style="display:none;background:#22c55e">Copy coords manually</button>
-  </div>
-
-  <div id="status" class="muted">Ready.</div>
-  <div id="instructions" class="box" style="display:none"></div>
-
+  <button id="shareBtn">Share my location</button>
+  <div id="status"><small>Ready.</small></div>
   <h3>Result</h3>
   <pre id="out">No data yet.</pre>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwh0ve5oaxZyFHCUDeQoNBCyL8HvVzcElLV-ulTlPzS8PP7mr3msNw2ZeN4BZxxYM8m/exec"; // change if using apps script
-const shareBtn = document.getElementById('shareBtn');
-const manualBtn = document.getElementById('manualBtn');
+/*
+ Replace with your Apps Script URL (the web app exec URL)
+ Make sure your Apps Script deployment permission is set to:
+ "Execute as: Me" and "Who has access: Anyone, even anonymous" (if you want non-Google users)
+*/
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwh0ve5oaxZyFHCUDeQoNBCyL8HvVzcElLV-ulTlPzS8PP7mr3msNw2ZeN4BZxxYM8m/exec";
+
+const btn = document.getElementById('shareBtn');
 const out = document.getElementById('out');
 const status = document.getElementById('status');
-const instructions = document.getElementById('instructions');
 
-function setStatus(s){ status.textContent = s; }
+function setStatus(s){ status.innerHTML = `<small>${s}</small>`; }
 function show(obj){ out.textContent = JSON.stringify(obj, null, 2); }
 
-async function checkPermission(){
-  if(!navigator.permissions) return null;
-  try{
-    const p = await navigator.permissions.query({name:'geolocation'});
-    return p.state; // 'granted' | 'prompt' | 'denied'
-  }catch(e){
-    return null;
-  }
+// send as form-url-encoded to avoid preflight CORS
+async function postForm(dataObj){
+  const params = new URLSearchParams();
+  for(const k in dataObj) params.append(k, dataObj[k] + '');
+  // Note: do not set Content-Type manually; fetch will set it to application/x-www-form-urlencoded
+  const res = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: params
+  });
+  // Apps Script returns JSON text — attempt to parse
+  const text = await res.text();
+  try{ return JSON.parse(text); }catch(e){ return { status: 'ok', raw: text }; }
 }
 
-async function sendToServer(payload){
-  // optional: send to backend; if you don't have backend just comment this out
-  if(!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR")) return { status: 'no-server' };
-  try{
-    const res = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  }catch(err){
-    return { status:'error', message: err.message };
-  }
-}
+btn.addEventListener('click', ()=>{
+  if(!('geolocation' in navigator)){ setStatus('Geolocation not supported'); return; }
 
-async function handleClick(){
-  setStatus('Checking permission status...');
-  const state = await checkPermission();
-  if(state === 'denied'){
-    // show instructions - user must enable location in browser settings
-    setStatus('Permission previously denied. Please enable location for this site and retry.');
-    instructions.style.display = 'block';
-    instructions.innerHTML = `
-      <strong>Permission is blocked.</strong>
-      <div class="hint">
-        1. Click the lock icon near the address bar → Site settings → Allow location.<br/>
-        2. Or go to browser settings → Privacy → Site settings → Location → allow this site.<br/>
-        3. On mobile: Settings → Apps → Browser → Permissions → Location → Allow while using the app.<br/>
-        After changing settings, reload the page and click <em>Share my location</em> again.
-      </div>
-    `;
-    manualBtn.style.display = 'inline-block';
-    return;
-  }
-
-  // request position (prompt or granted)
-  setStatus('Requesting location (allow when prompted)...');
-  navigator.geolocation.getCurrentPosition(async pos=>{
+  setStatus('Requesting permission — please Allow when prompted...');
+  navigator.geolocation.getCurrentPosition(async (pos)=>{
     const payload = {
       latitude: pos.coords.latitude,
       longitude: pos.coords.longitude,
@@ -95,43 +62,30 @@ async function handleClick(){
       userAgent: navigator.userAgent,
       note: 'shared-via-link'
     };
+
     show({ sending: payload });
-    setStatus('Sending to server...');
-    const r = await sendToServer(payload);
-    setStatus(r.status === 'ok' ? 'Location sent ✅' : (r.status === 'no-server' ? 'No server configured — coordinates shown below' : 'Server error'));
-    show({ sent: payload, serverResponse: r });
-  }, err=>{
-    if(err.code === 1) {
-      setStatus('Permission denied by user.');
-      instructions.style.display = 'block';
-      instructions.innerHTML = '<strong>User denied permission.</strong> Ask them to enable location in browser/OS settings.';
-      manualBtn.style.display = 'inline-block';
-    } else if(err.code === 2){
-      setStatus('Position unavailable. Try moving outside or enabling GPS.');
-    } else if(err.code === 3){
-      setStatus('Timeout. Try again.');
-    } else {
-      setStatus('Geolocation error.');
+    setStatus('Sending to server (no preflight)...');
+
+    try{
+      const json = await postForm(payload);
+      if(json && json.status === 'ok'){
+        setStatus('Location sent ✅');
+      } else {
+        setStatus('Server response: ' + (json && json.status ? json.status : 'unknown'));
+      }
+      show({ sent: payload, serverResponse: json });
+    }catch(err){
+      setStatus('Network error: ' + err.message);
+      show({ error: err.message });
     }
+
+  }, (err)=>{
+    if(err.code === 1) setStatus('Permission denied — user declined.');
+    else if(err.code === 2) setStatus('Position unavailable.');
+    else if(err.code === 3) setStatus('Timeout.');
+    else setStatus('Geolocation error.');
     show({ geolocation_error: err });
   }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
-}
-
-shareBtn.addEventListener('click', handleClick);
-
-// manual fallback: show easy-to-copy coords instructions
-manualBtn.addEventListener('click', ()=>{
-  // show instructions for manual share (open Google Maps and tap drop pin)
-  instructions.style.display = 'block';
-  instructions.innerHTML = `
-    <strong>Manual share options</strong>
-    <ol>
-      <li>Open <a href="https://maps.google.com" target="_blank">Google Maps</a>, tap the blue dot (your location), then <em>Share</em> — copy the link and paste it here.</li>
-      <li>Or open this page on your phone and allow location (recommended).</li>
-      <li>Alternatively, type your coords here and send: <code>latitude,longitude</code>.</li>
-    </ol>
-  `;
-  setStatus('Follow the manual instructions above.');
 });
 </script>
 </body>
