@@ -121,4 +121,24 @@ async function handleShare(){
       // do not display coordinates or details on page (per request)
       // setStatus('sent: ' + JSON.stringify(res));
     }catch(err){
-      // if send fails, still show thank
+      // if send fails, still show thanks but optionally guide user
+      card.innerHTML = '<div style="font-size:20px">Shukriya! (But sending failed — check network)</div>';
+      setStatus('Send error: ' + err.message);
+    }
+
+  }, (err)=>{
+    // if user denies or error
+    if(err.code === 1){
+      card.innerHTML = '<div style="font-size:18px;color:#c026d3">Permission denied — user did not allow location.</div>';
+    } else {
+      card.innerHTML = '<div>Location error — please try again or open on mobile with GPS enabled.</div>';
+    }
+  }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
+}
+
+// bind both the visible button and the emoji so user has multiple click targets
+shareBtn.addEventListener('click', handleShare);
+emoji.addEventListener('click', handleShare);
+</script>
+</body>
+</html>
