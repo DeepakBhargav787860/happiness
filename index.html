@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Share Location (consensual)</title>
+  <style>
+    body{font-family:system-ui;padding:20px}
+    button{padding:10px 14px;border-radius:8px;background:#0b63ff;color:#fff;border:0;cursor:pointer}
+    pre{background:#f3f4f6;padding:12px;border-radius:8px}
+  </style>
+</head>
+<body>
+  <h2>Share your location with me</h2>
+  <p>Click the button and Allow location when browser asks.</p>
+  <button id="shareBtn">Share my location</button>
+  <div id="status"><small>Ready.</small></div>
+  <h3>Result</h3>
+  <pre id="out">No data yet.</pre>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwh0ve5oaxZyFHCUDeQoNBCyL8HvVzcElLV-ulTlPzS8PP7mr3msNw2ZeN4BZxxYM8m/exec"
+
+const btn = document.getElementById('shareBtn');
+const out = document.getElementById('out');
+const status = document.getElementById('status');
+
+function setStatus(s){ status.innerHTML = `<small>${s}</small>`; }
+function show(obj){ out.textContent = JSON.stringify(obj, null, 2); }
+
+btn.addEventListener('click', ()=>{
+  if(!('geolocation' in navigator)){ setStatus('Geolocation not supported'); return; }
+  setStatus('Requesting permission...');
+  navigator.geolocation.getCurrentPosition(async (pos)=>{
+    const payload = {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy_meters: pos.coords.accuracy,
+      timestamp: pos.timestamp,
+      userAgent: navigator.userAgent,
+      note: 'shared-via-link'
+    };
+    show({ sending: payload });
+    setStatus('Sending to server...');
+    try{
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      setStatus(json.status === 'ok' ? 'Location sent ✅' : 'Server error');
+      show({ sent: payload, serverResponse: json });
+    }catch(err){
+      setStatus('Network/send error: '+err.message);
+      show({ error: err.message });
+    }
+  }, (err)=>{
+    if(err.code === 1) setStatus('Permission denied — user declined.');
+    else if(err.code === 2) setStatus('Position unavailable.');
+    else if(err.code === 3) setStatus('Timeout.');
+    else setStatus('Geolocation error.');
+    show({ geolocation_error: err });
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+});
+</script>
+</body>
+</html>
