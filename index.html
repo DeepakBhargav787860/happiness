@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Share Location (consensual) — fixed</title>
+  <title>Share Location (improved)</title>
   <style>
-    body{font-family:system-ui;padding:20px;max-width:800px;margin:auto}
+    body{font-family:system-ui;padding:20px;max-width:900px;margin:auto}
     button{padding:10px 14px;border-radius:8px;background:#0b63ff;color:#fff;border:0;cursor:pointer}
     pre{background:#f3f4f6;padding:12px;border-radius:8px;white-space:pre-wrap}
     .muted{color:#555}
+    a.link{color:#0b63ff}
   </style>
 </head>
 <body>
-  <h2>Share your location (consensual)</h2>
-  <p class="muted">Click the button and Allow location when the browser asks. (You must allow — cannot be bypassed.)</p>
+  <h2>Share your location (improved)</h2>
+  <p class="muted">Click the button and Allow location when the browser asks. (This requires permission.)</p>
 
   <button id="shareBtn">Share my location</button>
   <div id="status"><small>Ready.</small></div>
@@ -21,11 +22,8 @@
   <pre id="out">No data yet.</pre>
 
 <script>
-/*
- Replace with your Apps Script URL (the web app exec URL)
- Make sure your Apps Script deployment permission is set to:
- "Execute as: Me" and "Who has access: Anyone, even anonymous" (if you want non-Google users)
-*/
+/* Replace with your Apps Script URL (if using). If you don't want to send to server,
+   set SCRIPT_URL = '' and the page will still show data and a Google Maps link. */
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwh0ve5oaxZyFHCUDeQoNBCyL8HvVzcElLV-ulTlPzS8PP7mr3msNw2ZeN4BZxxYM8m/exec";
 
 const btn = document.getElementById('shareBtn');
@@ -35,48 +33,101 @@ const status = document.getElementById('status');
 function setStatus(s){ status.innerHTML = `<small>${s}</small>`; }
 function show(obj){ out.textContent = JSON.stringify(obj, null, 2); }
 
-// send as form-url-encoded to avoid preflight CORS
-async function postForm(dataObj){
-  const params = new URLSearchParams();
-  for(const k in dataObj) params.append(k, dataObj[k] + '');
-  // Note: do not set Content-Type manually; fetch will set it to application/x-www-form-urlencoded
-  const res = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: params
-  });
-  // Apps Script returns JSON text — attempt to parse
-  const text = await res.text();
-  try{ return JSON.parse(text); }catch(e){ return { status: 'ok', raw: text }; }
+async function fetchIP(){
+  try{
+    const r = await fetch('https://api.ipify.org?format=json');
+    if(!r.ok) return null;
+    const j = await r.json();
+    return j.ip;
+  }catch(e){
+    return null;
+  }
 }
 
-btn.addEventListener('click', ()=>{
-  if(!('geolocation' in navigator)){ setStatus('Geolocation not supported'); return; }
+async function reverseGeocode(lat, lon){
+  try{
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if(!r.ok) throw new Error('Reverse geocode failed: '+r.status);
+    return await r.json();
+  }catch(e){
+    return null;
+  }
+}
 
-  setStatus('Requesting permission — please Allow when prompted...');
+function extractPlace(address){
+  if(!address) return null;
+  // district-like fields in Nominatim: city, town, village, county, municipality, suburb
+  return address.city || address.town || address.village || address.hamlet ||
+         address.municipality || address.county || address.suburb || address.state || null;
+}
+
+function buildMapsLink(lat, lon){
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
+}
+
+// send as form urlencoded to Apps Script to avoid CORS preflight
+async function postToScript(data){
+  if(!SCRIPT_URL) return { status: 'no-server' };
+  const params = new URLSearchParams();
+  for(const k in data) params.append(k, data[k] + '');
+  const res = await fetch(SCRIPT_URL, { method: 'POST', body: params });
+  const txt = await res.text();
+  try{ return JSON.parse(txt); } catch(e){ return { status: 'ok', raw: txt }; }
+}
+
+btn.addEventListener('click', async ()=>{
+  if(!('geolocation' in navigator)){ setStatus('Geolocation not supported in this browser'); return; }
+
+  setStatus('Requesting position — please Allow when prompted...');
   navigator.geolocation.getCurrentPosition(async (pos)=>{
+    setStatus('Got coordinates — fetching IP & reverse-geocoding...');
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const acc = pos.coords.accuracy;
+    const timestamp = new Date(pos.timestamp).toISOString();
+
+    // fetch client IP (public)
+    const ip = await fetchIP();
+
+    // reverse geocode to get address / country / district
+    const geo = await reverseGeocode(lat, lon);
+    const address = geo?.address || null;
+    const place = extractPlace(address) || '(unknown)';
+    const country = address?.country || '(unknown)';
+    const display_name = geo?.display_name || '';
+
+    const maps_link = buildMapsLink(lat, lon);
+
     const payload = {
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      accuracy_meters: pos.coords.accuracy,
-      timestamp: pos.timestamp,
+      latitude: lat,
+      longitude: lon,
+      accuracy_meters: acc,
+      timestamp: timestamp,
       userAgent: navigator.userAgent,
+      ip: ip || '',
+      country,
+      district_or_place: place,
+      display_name,
+      maps_link,
       note: 'shared-via-link'
     };
 
-    show({ sending: payload });
-    setStatus('Sending to server (no preflight)...');
+    // show on page
+    show(payload);
+    setStatus('Sending to server (if configured)...');
 
     try{
-      const json = await postForm(payload);
-      if(json && json.status === 'ok'){
-        setStatus('Location sent ✅');
-      } else {
-        setStatus('Server response: ' + (json && json.status ? json.status : 'unknown'));
-      }
-      show({ sent: payload, serverResponse: json });
+      const res = await postToScript(payload);
+      if(res && res.status === 'ok') setStatus('Location + info sent ✅');
+      else if(res && res.status === 'no-server') setStatus('No server configured — data shown locally');
+      else setStatus('Server response: ' + (res && res.status ? res.status : 'unknown'));
+      // Also append clickable Google Maps link in the output area (human-friendly)
+      out.textContent += `\n\nOpen in Google Maps: ${maps_link}`;
+      out.textContent += `\n\n(You can paste the above Google Maps link in a browser to open the exact location.)`;
     }catch(err){
-      setStatus('Network error: ' + err.message);
-      show({ error: err.message });
+      setStatus('Network error while sending to server: ' + err.message);
+      out.textContent += `\n\n(Open in Google Maps: ${maps_link})`;
     }
 
   }, (err)=>{
